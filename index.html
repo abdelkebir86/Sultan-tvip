@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مشغل IPTV متقدم</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: Arial, sans-serif; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        h1 { text-align: center; }
+        .video-container { width: 100%; max-width: 800px; }
+        video { width: 100%; border-radius: 10px; }
+        .controls { margin-top: 10px; text-align: center; }
+        button, select { padding: 10px 15px; background: #2196F3; border: none; color: white; border-radius: 5px; cursor: pointer; font-size: 16px; margin: 5px; }
+        .loading { color: #2196F3; display: none; margin: 10px; }
+        .channel-list { list-style: none; padding: 0; margin-top: 15px; width: 100%; max-width: 800px; height: 250px; overflow-y: auto; border: 1px solid #555; border-radius: 10px; background: #222; }
+        .channel-item { padding: 10px; margin: 5px; background: #333; border-radius: 5px; cursor: pointer; transition: 0.3s; text-align: center; }
+        .channel-item:hover { background: #2196F3; }
+    </style>
+</head>
+<body>
+    <h1>🎬 مشغل القنوات المخصصة</h1>
+
+    <div class="video-container">
+        <video id="videoPlayer" controls></video>
+    </div>
+
+    <h2 id="channelName">📺 الآن: غير محدد</h2>
+
+    <div class="controls">
+        <select id="sectionSelect">
+            <option value="1000-2000">من 1000 إلى 2000</option>
+            <option value="2000-3000">من 2000 إلى 3000</option>
+            <option value="3000-4000">من 3000 إلى 4000</option>
+            <option value="4000-5000">من 4000 إلى 5000</option>
+            <option value="5000-6000">من 5000 إلى 6000</option>
+            <option value="6000-6566">من 6000 إلى 6566</option>
+        </select>
+        <button onclick="loadCustomChannels()">تحميل القنوات</button>
+    </div>
+
+    <div class="loading" id="loading">جاري تحميل القنوات...</div>
+    
+    <ul class="channel-list" id="channelList"></ul>
+
+    <script>
+        const BASE_URL = "http://dw4t1jha.tvclub.xyz/iptv/SSVLTMCKNQ4NA8/";
+        const M3U_FILE_URL = "https://www.dropbox.com/scl/fi/uzne46d1xh7o3gzgm10u6/Pasted_1986.m3u?rlkey=nfkwpo59buc6zolrgxtk7jy6s&dl=1";
+        let channelDatabase = {}; // قاعدة بيانات الأسماء
+        let isDataLoaded = false; // متغير لمعرفة هل تم تحميل الأسماء
+
+        document.addEventListener("DOMContentLoaded", async function() {
+            await loadM3UFromServer();
+        });
+
+        async function loadM3UFromServer() {
+            try {
+                let response = await fetch(M3U_FILE_URL);
+                let text = await response.text();
+
+                console.log("📌 محتوى ملف M3U:", text);
+                channelDatabase = parseM3U(text);
+                console.log("📌 قاعدة بيانات القنوات بعد التحليل:", channelDatabase);
+
+                if (Object.keys(channelDatabase).length > 0) {
+                    isDataLoaded = true;
+                    showNotification("✅ تم تحميل أسماء القنوات بنجاح!");
+                } else {
+                    showNotification("⚠️ لم يتم العثور على أسماء القنوات.");
+                }
+            } catch (error) {
+                console.error("❌ خطأ في تحميل ملف M3U:", error);
+                showNotification("❌ فشل تحميل أسماء القنوات.");
+            }
+        }
+
+        function parseM3U(m3uText) {
+            const regex = /#EXTINF:\d+.*?,(.*?)\s+#EXTGRP:.*?\s+(http.*?\/(\d+)\/index\.m3u8)/g;
+            const channels = {};
+            let match;
+
+            while ((match = regex.exec(m3uText)) !== null) {
+                const channelName = match[1].trim();
+                const channelNumber = match[3].trim();
+                channels[channelNumber] = channelName;
+            }
+
+            console.log("📌 القنوات المستخرجة:", channels);
+            return channels;
+        }
+
+        function getSelectedSection() {
+            const value = document.getElementById('sectionSelect').value;
+            const [start, end] = value.split('-').map(Number);
+            return { start, end };
+        }
+
+        function loadCustomChannels() {
+            if (!isDataLoaded) {
+                showNotification("❌ لم يتم تحميل أسماء القنوات بعد. يرجى الانتظار...");
+                console.error("❌ بيانات القنوات غير متوفرة بعد.");
+                return;
+            }
+
+            console.log("📌 تحميل القنوات بناءً على البيانات المخزنة:", channelDatabase);
+
+            const { start, end } = getSelectedSection();
+            const allChannels = [];
+
+            for (let i = start; i <= end; i++) {
+                const channelNumber = i.toString();
+                const channelName = channelDatabase[channelNumber] || `📺 قناة غير معروفة (${channelNumber})`;
+                allChannels.push({
+                    name: channelName,
+                    url: `${BASE_URL}${channelNumber}/index.m3u8`
+                });
+            }
+
+            console.log("📌 القنوات النهائية:", allChannels);
+            renderChannels(allChannels);
+        }
+
+        function renderChannels(channels) {
+            const list = document.getElementById('channelList');
+            list.innerHTML = channels.map(ch => `
+                <li class="channel-item" onclick="playChannel('${ch.url}', '${ch.name}')">
+                    📺 ${ch.name}
+                </li>
+            `).join('');
+        }
+
+        function playChannel(url, name) {
+            const player = document.getElementById("videoPlayer");
+            document.getElementById("channelName").textContent = `📺 الآن: ${name}`;
+
+            if (Hls.isSupported() && url.endsWith(".m3u8")) {
+                if (player.hls) player.hls.destroy();
+                const hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(player);
+                player.hls = hls;
+            } else {
+                player.src = url;
+            }
+
+            player.play();
+        }
+
+        function showNotification(message) {
+            const notif = document.createElement("div");
+            notif.style = "position:fixed; top:20px; right:20px; background:#2196F3; padding:15px; border-radius:8px;";
+            notif.textContent = message;
+            document.body.appendChild(notif);
+            setTimeout(() => notif.remove(), 3000);
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</body>
+</html>
